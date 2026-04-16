@@ -7,6 +7,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
+# force-rebuild-1776311192635
+RUN echo "fresh build"
+
 EXPOSE 8080
 
 CMD ["python", "main.py"]
