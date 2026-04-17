@@ -4,9 +4,12 @@ Prevents duplicate processing and gives the operator full pipeline visibility.
 """
 
 import json
+import logging
 import sqlite3
 from datetime import datetime, timezone
 from typing import Any, Optional
+
+_log = logging.getLogger("claude_bridge.state")
 
 
 class BridgeStateDB:
@@ -32,6 +35,7 @@ class BridgeStateDB:
                     updated_at    TEXT
                 )
             """)
+            conn.execute("PRAGMA journal_mode=WAL")
 
     def _conn(self):
         return sqlite3.connect(self.db_path)
@@ -90,34 +94,50 @@ class BridgeStateDB:
         return row is not None
 
     def get(self, idea_id: str) -> Optional[dict]:
-        with self._conn() as conn:
-            row = conn.execute(
-                "SELECT * FROM pipeline WHERE idea_id = ?", (idea_id,)
-            ).fetchone()
-        if not row:
+        try:
+            with self._conn() as conn:
+                row = conn.execute(
+                    "SELECT * FROM pipeline WHERE idea_id = ?", (idea_id,)
+                ).fetchone()
+            if not row:
+                return None
+            cols = ["idea_id","stage","title","score","project_id","deploy_url",
+                    "checkout_url","repo_url","payload","meta","created_at","updated_at"]
+            return dict(zip(cols, row))
+        except Exception as e:
+            _log.warning("DB read error (get): %s", e)
             return None
-        cols = ["idea_id","stage","title","score","project_id","deploy_url",
-                "checkout_url","repo_url","payload","meta","created_at","updated_at"]
-        return dict(zip(cols, row))
 
     def count_processed(self) -> int:
-        with self._conn() as conn:
-            return conn.execute("SELECT COUNT(*) FROM pipeline").fetchone()[0]
+        try:
+            with self._conn() as conn:
+                return conn.execute("SELECT COUNT(*) FROM pipeline").fetchone()[0]
+        except Exception as e:
+            _log.warning("DB read error (count_processed): %s", e)
+            return 0
 
     def count_by_stage(self, stage: str) -> int:
-        with self._conn() as conn:
-            return conn.execute(
-                "SELECT COUNT(*) FROM pipeline WHERE stage = ?", (stage,)
-            ).fetchone()[0]
+        try:
+            with self._conn() as conn:
+                return conn.execute(
+                    "SELECT COUNT(*) FROM pipeline WHERE stage = ?", (stage,)
+                ).fetchone()[0]
+        except Exception as e:
+            _log.warning("DB read error (count_by_stage): %s", e)
+            return 0
 
     def count_in_progress(self) -> int:
-        terminal = ("launched", "factory_failed", "brief_invalid", "error", "skipped")
-        placeholders = ",".join("?" * len(terminal))
-        with self._conn() as conn:
-            return conn.execute(
-                f"SELECT COUNT(*) FROM pipeline WHERE stage NOT IN ({placeholders})",
-                terminal,
-            ).fetchone()[0]
+        try:
+            terminal = ("launched", "factory_failed", "brief_invalid", "error", "skipped")
+            placeholders = ",".join("?" * len(terminal))
+            with self._conn() as conn:
+                return conn.execute(
+                    f"SELECT COUNT(*) FROM pipeline WHERE stage NOT IN ({placeholders})",
+                    terminal,
+                ).fetchone()[0]
+        except Exception as e:
+            _log.warning("DB read error (count_in_progress): %s", e)
+            return 0
 
     def all_launched(self) -> list:
         with self._conn() as conn:
