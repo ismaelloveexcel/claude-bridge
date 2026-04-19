@@ -29,7 +29,12 @@ import os as _os
 import httpx as _httpx
 
 _BRIDGE_URL    = _os.environ.get("BRIDGE_URL", "")
-_BRIDGE_SECRET = _os.environ.get("BRIDGE_WEBHOOK_SECRET", "changeme")
+_BRIDGE_SECRET = _os.environ.get("BRIDGE_WEBHOOK_SECRET", "")
+if _BRIDGE_URL and not _BRIDGE_SECRET:
+    raise RuntimeError(
+        "BRIDGE_WEBHOOK_SECRET env var is required when BRIDGE_URL is set. "
+        "Set a strong random secret shared with claude-bridge."
+    )
 
 
 async def _fire_bridge_webhook(idea_data: dict):

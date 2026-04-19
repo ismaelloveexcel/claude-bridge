@@ -18,6 +18,9 @@ class BridgeStateDB:
         self._init()
 
     def _init(self):
+        conn = self._conn()
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.close()
         with self._conn() as conn:
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS pipeline (
@@ -35,7 +38,6 @@ class BridgeStateDB:
                     updated_at    TEXT
                 )
             """)
-            conn.execute("PRAGMA journal_mode=WAL")
 
     def _conn(self):
         return sqlite3.connect(self.db_path)
@@ -104,16 +106,16 @@ class BridgeStateDB:
             cols = ["idea_id","stage","title","score","project_id","deploy_url",
                     "checkout_url","repo_url","payload","meta","created_at","updated_at"]
             return dict(zip(cols, row))
-        except Exception as e:
-            _log.warning("DB read error (get): %s", e)
+        except sqlite3.Error:
+            _log.exception("DB read error (get)")
             return None
 
     def count_processed(self) -> int:
         try:
             with self._conn() as conn:
                 return conn.execute("SELECT COUNT(*) FROM pipeline").fetchone()[0]
-        except Exception as e:
-            _log.warning("DB read error (count_processed): %s", e)
+        except sqlite3.Error:
+            _log.exception("DB read error (count_processed)")
             return 0
 
     def count_by_stage(self, stage: str) -> int:
@@ -122,8 +124,8 @@ class BridgeStateDB:
                 return conn.execute(
                     "SELECT COUNT(*) FROM pipeline WHERE stage = ?", (stage,)
                 ).fetchone()[0]
-        except Exception as e:
-            _log.warning("DB read error (count_by_stage): %s", e)
+        except sqlite3.Error:
+            _log.exception("DB read error (count_by_stage)")
             return 0
 
     def count_in_progress(self) -> int:
@@ -135,8 +137,8 @@ class BridgeStateDB:
                     f"SELECT COUNT(*) FROM pipeline WHERE stage NOT IN ({placeholders})",
                     terminal,
                 ).fetchone()[0]
-        except Exception as e:
-            _log.warning("DB read error (count_in_progress): %s", e)
+        except sqlite3.Error:
+            _log.exception("DB read error (count_in_progress)")
             return 0
 
     def all_launched(self) -> list:
