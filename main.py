@@ -44,10 +44,24 @@ log = logging.getLogger("claude_bridge")
 IDEA_FACTORY_URL     = os.environ["IDEA_FACTORY_URL"].rstrip("/")      # e.g. https://idea-factory.railway.app
 DIRECTOR_URL         = os.environ["DIRECTOR_URL"].rstrip("/")           # e.g. https://aidan-director.railway.app
 DIRECTOR_API_KEY     = os.environ.get("DIRECTOR_API_KEY", "")          # optional auth header
-BRIDGE_SECRET        = os.environ.get("BRIDGE_WEBHOOK_SECRET", "changeme")
+BRIDGE_SECRET        = os.environ.get("BRIDGE_WEBHOOK_SECRET", "")
+if not BRIDGE_SECRET:
+    raise RuntimeError(
+        "FATAL: BRIDGE_WEBHOOK_SECRET env var is required. "
+        "Set a strong random secret shared with idea-factory."
+    )
 POLL_INTERVAL_SECS   = int(os.environ.get("POLL_INTERVAL_SECS", "60")) # how often to poll idea-factory
 MIN_GO_SCORE         = int(os.environ.get("MIN_GO_SCORE", "70"))        # idea-factory score threshold
 MIN_DIRECTOR_SCORE   = float(os.environ.get("MIN_DIRECTOR_SCORE", "8.0"))  # managing-director threshold
+
+# ── Startup validation ────────────────────────────────────────────────────────
+log.info("Config: IDEA_FACTORY_URL = %s", IDEA_FACTORY_URL)
+log.info("Config: DIRECTOR_URL     = %s", DIRECTOR_URL)
+log.info("Config: DIRECTOR_API_KEY = %s", "set" if DIRECTOR_API_KEY else "NOT SET (no auth)")
+log.info("Config: POLL_INTERVAL    = %ds", POLL_INTERVAL_SECS)
+log.info("Config: MIN_GO_SCORE     = %d", MIN_GO_SCORE)
+log.info("Config: MIN_DIRECTOR_SCORE = %.1f", MIN_DIRECTOR_SCORE)
+log.info("Config: BRIDGE_WEBHOOK_SECRET = set (%d chars)", len(BRIDGE_SECRET))
 
 # ── State DB ──────────────────────────────────────────────────────────────────
 db = BridgeStateDB("bridge_state.db")
@@ -124,7 +138,7 @@ async def poll_loop():
         try:
             await poll_idea_factory()
         except Exception as e:
-            log.error("Poll error: %s", e)
+            log.exception("Poll error: %s", e)
         await asyncio.sleep(POLL_INTERVAL_SECS)
 
 
@@ -366,8 +380,9 @@ async def health():
 
 def _verify_signature(body: bytes, signature: str) -> bool:
     if not signature:
-        return True  # permissive if not configured
-    expected = hmac.new(BRIDGE_SECRET.encode(), body, hashlib.sha256).hexdigest()
+        log.warning("Webhook request received without X-Bridge-Signature header")
+        return False
+    expected = hmac.HMAC(BRIDGE_SECRET.encode(), body, hashlib.sha256).hexdigest()
     return hmac.compare_digest(expected, signature)
 
 
