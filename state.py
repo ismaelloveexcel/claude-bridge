@@ -18,9 +18,8 @@ class BridgeStateDB:
         self._init()
 
     def _init(self):
-        conn = self._conn()
-        conn.execute("PRAGMA journal_mode=WAL")
-        conn.close()
+        with self._conn() as conn:
+            conn.execute("PRAGMA journal_mode=WAL")
         with self._conn() as conn:
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS pipeline (
